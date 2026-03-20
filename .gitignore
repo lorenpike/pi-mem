@@ -1,0 +1,9 @@
+node_modules/
+.pi/
+dist/
+build/
+coverage/
+*.log
+pi-session-*.html
+.DS_Store
+Thumbs.db

@@ -1,0 +1,20 @@
+- [x] Scaffold the pi extension structure for mem.
+- [x] Store working-directory-local memory entries in `.mem/memories.md`.
+- [x] Implement loading stored memory entries from `.mem/memories.md` on every agent/model invocation, or cache safely while ensuring updates are reflected on the next invocation.
+- [x] Build a compact Markdown `# Memories` block from stored entries.
+- [x] Inject the `# Memories` block into prompt/context between the system prompt and the conversation history, replacing any previously injected memories block.
+- [x] Create `.mem/` and `.mem/memories.md` automatically if they do not exist.
+- [x] Switch memory storage/rendering from unordered bullets to an ordered list (`1.`, `2.`, `3.`) with stable number references.
+- [x] Register an add-memory tool that accepts a single-line tagged entry in non-list form and appends it as the next numbered memory.
+- [x] Reject multiline memory input and suggest writing documentation plus a descriptive `[link]` memory instead.
+- [x] Register an update-memory tool that edits an existing memory by number.
+- [x] Register a delete-memory tool that removes an existing memory by number.
+- [x] Validate memory entries use allowed lowercase tags (`[goal]`, `[fact]`, `[preference]`, `[decision]`, `[process]`, `[open]`, `[link]`).
+- [x] Normalize memory entries by stripping trailing periods.
+- [x] Enforce no blank lines between memory entries in `.mem/memories.md`.
+- [x] Append new memory entries to the bottom to preserve chronology.
+- [x] Ensure memory changes only appear in the injected block on the next invocation, not retroactively within the current invocation.
+- [x] Add tool documentation telling the model to avoid duplicates and prefer updating an existing memory when appropriate.
+- [x] Add a `/mem` slash command for manual memory capture, status, and UI display.
+- [ ] Add tests for per-invocation reloads, creation of missing files, add/update/delete behavior by number, validation, normalization, ordered-list rendering, injection/replacement, and slash-command flows.
+- [x] Write basic usage and implementation notes in project docs.
