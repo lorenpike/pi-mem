@@ -144,6 +144,12 @@ type MemToolInput =
   | { action: "delete"; number: number }
 ```
 
+The `action` field must be one of:
+
+- `"add"` — append a new memory; requires `entry`
+- `"update"` — replace an existing memory by list number; requires `number` and `entry`
+- `"delete"` — remove an existing memory by list number; requires `number`
+
 ### Add memory
 
 The add action should accept a single-line tagged memory entry in non-list form, for example:

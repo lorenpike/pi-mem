@@ -509,7 +509,8 @@ export default function memExtension(pi: ExtensionAPI) {
 		promptSnippet: `Manage durable one-line memory entries in ${MEMORY_FILE_RELATIVE_PATH}`,
 		promptGuidelines: [
 			"Use mem only for durable project context such as goals, facts, preferences, decisions, processes, open questions, and links.",
-			"Set action to add, update, or delete.",
+			"Set action to one of: add, update, delete.",
+			"Use action=add to append a new memory with entry; action=update to replace an existing memory by number with entry; action=delete to remove an existing memory by number.",
 			"Before adding a memory, check the current # Memories block. If an existing memory already captures the same durable information, prefer action=update or skip adding a duplicate.",
 			"For add and update, pass memory text as `[tag] content`. Do not include list numbers or bullets.",
 			"For update and delete, use the memory number shown in the current # Memories block.",
@@ -518,7 +519,7 @@ export default function memExtension(pi: ExtensionAPI) {
 		],
 		parameters: Type.Object({
 			action: Type.Union([Type.Literal("add"), Type.Literal("update"), Type.Literal("delete")], {
-				description: "Memory operation to perform.",
+				description: "Memory operation to perform. One of: add, update, delete.",
 			}),
 			number: Type.Optional(
 				Type.Integer({
