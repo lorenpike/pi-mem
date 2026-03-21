@@ -10,7 +10,7 @@ Pi sessions are persistent, but model context is still ephemeral. Once a context
 
 This project adds a very small memory layer for pi:
 
-- memory tools the model can call to save, update, and delete durable project memory
+- a memory tool the model can call to add, update, and delete durable project memory
 - a hook that injects the current memory block into the prompt before agent/model invocations
 - persistence in a repo-local memory file tied to the current working directory
 - a strong bias toward capturing decisions, preferences, and links to project docs
@@ -55,7 +55,7 @@ At a high level, each agent/model invocation should look like this:
 1. Load durable memory entries for the current working directory from `.mem/memories.md`.
 2. Build a compact `# Memories` section.
 3. Inject that section into the prompt/context between the system prompt and the conversation history, replacing any previously injected memories block.
-4. Expose memory tools so the model can save, update, and delete entries during the conversation.
+4. Expose a memory tool so the model can add, update, and delete entries during the conversation.
 5. Persist changes back to `.mem/memories.md`.
 6. On the next agent/model invocation, reload `.mem/memories.md` and inject the refreshed block again.
 
@@ -133,14 +133,23 @@ Rules:
 
 ## Tool behavior
 
-The extension should expose tools for adding, updating, and deleting memory.
+The extension should expose a single `mem` tool with an explicit action.
+
+Conceptually:
+
+```ts
+type MemToolInput =
+  | { action: "add"; entry: string }
+  | { action: "update"; number: number; entry: string }
+  | { action: "delete"; number: number }
+```
 
 ### Add memory
 
-The add tool should accept a single-line tagged memory entry in non-list form, for example:
+The add action should accept a single-line tagged memory entry in non-list form, for example:
 
 ```txt
-[decision] Use project-local memory first; defer global memory
+mem({ action: "add", entry: "[decision] Use project-local memory first; defer global memory" })
 ```
 
 It should normalize the entry into ordered-list storage in `.mem/memories.md` by appending it with the next list number.
@@ -149,22 +158,22 @@ If the input contains newlines, the tool should reject it and suggest writing th
 
 ### Update memory
 
-The update tool should accept a memory number plus a new single-line tagged entry, and replace the content for that numbered memory.
+The update action should accept a memory number plus a new single-line tagged entry, and replace the content for that numbered memory.
 
 Example conceptually:
 
 ```txt
-mem_update(3, "[decision] Use project-local memory only for v1")
+mem({ action: "update", number: 3, entry: "[decision] Use project-local memory only for v1" })
 ```
 
 ### Delete memory
 
-The delete tool should accept a memory number and remove that entry.
+The delete action should accept a memory number and remove that entry.
 
 Example conceptually:
 
 ```txt
-mem_delete(2)
+mem({ action: "delete", number: 2 })
 ```
 
 Because memories use ordered numbering as references, update and delete operate by memory number.
@@ -204,10 +213,10 @@ You are a helpful coding agent...
 During the session, the model might call:
 
 ```txt
-mem("[decision] Use project-local memory first; defer global memory")
+mem({ action: "add", entry: "[decision] Use project-local memory first; defer global memory" })
 ```
 
-That entry would be appended to `.mem/memories.md`. If the model later needs to revise or remove a memory, it should use the numbered update/delete operations. Changes should appear in the injected memory block on the next model invocation.
+That entry would be appended to `.mem/memories.md`. If the model later needs to revise or remove a memory, it should call `mem` again with `action: "update"` or `action: "delete"`. Changes should appear in the injected memory block on the next model invocation.
 
 ## Pi-specific scope
 

@@ -63,6 +63,11 @@ interface MemoryUpdateResult extends MemoryMutationResult {
 	previousEntry: string;
 }
 
+type MemToolParams =
+	| { action: "add"; entry: string }
+	| { action: "update"; number: number; entry: string }
+	| { action: "delete"; number: number };
+
 function getMemoryDirectoryPath(cwd: string): string {
 	return resolve(cwd, MEMORY_DIRECTORY_RELATIVE_PATH);
 }
@@ -328,6 +333,37 @@ async function deleteMemoryEntry(cwd: string, number: number, signal?: AbortSign
 	});
 }
 
+function normalizeMemToolParams(params: unknown): MemToolParams {
+	if (!params || typeof params !== "object") {
+		throw new Error("mem params must be an object.");
+	}
+
+	const candidate = params as { action?: unknown; number?: unknown; entry?: unknown };
+	if (candidate.action !== "add" && candidate.action !== "update" && candidate.action !== "delete") {
+		throw new Error('mem action must be one of: "add", "update", or "delete".');
+	}
+
+	if (candidate.action === "add") {
+		if (typeof candidate.entry !== "string") {
+			throw new Error('mem action "add" requires an entry string.');
+		}
+		return { action: "add", entry: candidate.entry };
+	}
+
+	if (!Number.isInteger(candidate.number) || (candidate.number as number) < 1) {
+		throw new Error(`mem action "${candidate.action}" requires a memory number >= 1.`);
+	}
+
+	if (candidate.action === "update") {
+		if (typeof candidate.entry !== "string") {
+			throw new Error('mem action "update" requires an entry string.');
+		}
+		return { action: "update", number: candidate.number as number, entry: candidate.entry };
+	}
+
+	return { action: "delete", number: candidate.number as number };
+}
+
 function buildMemoryStatusText(path: string, count: number): string {
 	return `mem: ${count} memories in ${path}`;
 }
@@ -469,98 +505,81 @@ export default function memExtension(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "mem",
 		label: "Mem",
-		description: "Save a durable one-line memory entry for the current working directory.",
-		promptSnippet: `Save a durable one-line memory entry to ${MEMORY_FILE_RELATIVE_PATH}`,
+		description: "Add, update, or delete a durable one-line memory entry for the current working directory.",
+		promptSnippet: `Manage durable one-line memory entries in ${MEMORY_FILE_RELATIVE_PATH}`,
 		promptGuidelines: [
 			"Use mem only for durable project context such as goals, facts, preferences, decisions, processes, open questions, and links.",
-			"Before adding a memory, check the current # Memories block. If an existing memory already captures the same durable information, prefer mem_update or skip adding a duplicate.",
-			"Pass memory text as `[tag] content`. Do not include list numbers or bullets.",
+			"Set action to add, update, or delete.",
+			"Before adding a memory, check the current # Memories block. If an existing memory already captures the same durable information, prefer action=update or skip adding a duplicate.",
+			"For add and update, pass memory text as `[tag] content`. Do not include list numbers or bullets.",
+			"For update and delete, use the memory number shown in the current # Memories block.",
 			"If the memory needs more than one line, write project documentation first and store a descriptive [link] memory instead.",
+			"Delete a memory when it is obsolete or incorrect. Remaining memories will be renumbered after deletion.",
 		],
 		parameters: Type.Object({
-			entry: Type.String({
-				description: `Single-line memory entry in the form [tag] content. Allowed tags: ${ALLOWED_TAG_LIST}.`,
+			action: Type.Union([Type.Literal("add"), Type.Literal("update"), Type.Literal("delete")], {
+				description: "Memory operation to perform.",
 			}),
+			number: Type.Optional(
+				Type.Integer({
+					minimum: 1,
+					description: "Memory number for update/delete. Ignored for add.",
+				}),
+			),
+			entry: Type.Optional(
+				Type.String({
+					description: `Single-line memory entry in the form [tag] content for add/update. Allowed tags: ${ALLOWED_TAG_LIST}.`,
+				}),
+			),
 		}),
 		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-			const result = await addMemoryEntry(ctx.cwd, (params as { entry: string }).entry, signal);
+			const operation = normalizeMemToolParams(params);
+			if (operation.action === "add") {
+				const result = await addMemoryEntry(ctx.cwd, operation.entry, signal);
 
-			return {
-				content: [{ type: "text", text: `Added memory ${result.number} in ${MEMORY_FILE_RELATIVE_PATH}: ${result.entry}` }],
-				details: {
-					action: "add",
-					path: result.path,
-					number: result.number,
-					entry: result.entry,
-					count: result.count,
-				},
-			};
-		},
-	});
-
-	pi.registerTool({
-		name: "mem_update",
-		label: "Mem Update",
-		description: "Update an existing durable memory entry by its number.",
-		promptSnippet: `Update a numbered memory entry in ${MEMORY_FILE_RELATIVE_PATH}`,
-		promptGuidelines: [
-			"Use the memory number shown in the current # Memories block.",
-			"Pass replacement text as `[tag] content`. Do not include list numbers or bullets.",
-			"Prefer updating an existing memory when a durable fact or decision changes instead of adding a duplicate.",
-			"If the replacement needs more than one line, write documentation first and update the memory to a descriptive [link] instead.",
-		],
-		parameters: Type.Object({
-			number: Type.Integer({ minimum: 1, description: "The memory number to update." }),
-			entry: Type.String({
-				description: `Replacement memory entry in the form [tag] content. Allowed tags: ${ALLOWED_TAG_LIST}.`,
-			}),
-		}),
-		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-			const { number, entry } = params as { number: number; entry: string };
-			const result = await updateMemoryEntry(ctx.cwd, number, entry, signal);
-
-			return {
-				content: [
-					{
-						type: "text",
-						text: `Updated memory ${number} in ${MEMORY_FILE_RELATIVE_PATH}: ${result.previousEntry} -> ${result.entry}`,
+				return {
+					content: [{ type: "text", text: `Added memory ${result.number} in ${MEMORY_FILE_RELATIVE_PATH}: ${result.entry}` }],
+					details: {
+						ok: true,
+						action: "add",
+						path: result.path,
+						number: result.number,
+						entry: result.entry,
+						count: result.count,
 					},
-				],
-				details: {
-					action: "update",
-					path: result.path,
-					number,
-					previousEntry: result.previousEntry,
-					entry: result.entry,
-					count: result.count,
-				},
-			};
-		},
-	});
+				};
+			}
 
-	pi.registerTool({
-		name: "mem_delete",
-		label: "Mem Delete",
-		description: "Delete an existing durable memory entry by its number.",
-		promptSnippet: `Delete a numbered memory entry from ${MEMORY_FILE_RELATIVE_PATH}`,
-		promptGuidelines: [
-			"Use the memory number shown in the current # Memories block.",
-			"Delete a memory when it is obsolete or incorrect and should no longer be carried forward.",
-			"Remember that remaining memories will be renumbered after deletion because the file uses a chronological ordered list.",
-		],
-		parameters: Type.Object({
-			number: Type.Integer({ minimum: 1, description: "The memory number to delete." }),
-		}),
-		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-			const { number } = params as { number: number };
-			const result = await deleteMemoryEntry(ctx.cwd, number, signal);
+			if (operation.action === "update") {
+				const result = await updateMemoryEntry(ctx.cwd, operation.number, operation.entry, signal);
 
+				return {
+					content: [
+						{
+							type: "text",
+							text: `Updated memory ${operation.number} in ${MEMORY_FILE_RELATIVE_PATH}: ${result.previousEntry} -> ${result.entry}`,
+						},
+					],
+					details: {
+						ok: true,
+						action: "update",
+						path: result.path,
+						number: operation.number,
+						previousEntry: result.previousEntry,
+						entry: result.entry,
+						count: result.count,
+					},
+				};
+			}
+
+			const result = await deleteMemoryEntry(ctx.cwd, operation.number, signal);
 			return {
-				content: [{ type: "text", text: `Deleted memory ${number} from ${MEMORY_FILE_RELATIVE_PATH}: ${result.entry}` }],
+				content: [{ type: "text", text: `Deleted memory ${operation.number} from ${MEMORY_FILE_RELATIVE_PATH}: ${result.entry}` }],
 				details: {
+					ok: true,
 					action: "delete",
 					path: result.path,
-					number,
+					number: operation.number,
 					entry: result.entry,
 					count: result.count,
 				},
