@@ -231,6 +231,28 @@ This project is not a second brain.
 
 It is a **continuity layer** for pi.
 
+## Installation
+
+Install this extension from GitHub using the repo's remote URL:
+
+```bash
+pi install git:git@github.com:lorenpike/pi-mem.git
+```
+
+Install it project-local instead of globally:
+
+```bash
+pi install -l git:git@github.com:lorenpike/pi-mem.git
+```
+
+Try it without installing:
+
+```bash
+pi -e git:git@github.com:lorenpike/pi-mem.git
+```
+
+Because the remote is in SSH `git@github.com:owner/repo.git` form, pi needs the `git:` prefix when installing from it.
+
 ## Development
 
 Current scaffold:
