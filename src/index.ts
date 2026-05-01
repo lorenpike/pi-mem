@@ -226,9 +226,15 @@ async function ensureMemoryStore(cwd: string): Promise<string> {
 	return memoryFilePath;
 }
 
-async function loadMemoryStore(cwd: string): Promise<{ path: string; entries: MemoryEntry[]; raw: string }> {
-	const memoryFilePath = await ensureMemoryStore(cwd);
-	const raw = await readFile(memoryFilePath, "utf8");
+async function loadMemoryStore(cwd: string, { ensureExists = true }: { ensureExists?: boolean } = {}): Promise<{ path: string; entries: MemoryEntry[]; raw: string }> {
+	const memoryFilePath = ensureExists ? await ensureMemoryStore(cwd) : getMemoryFilePath(cwd);
+
+	let raw: string;
+	try {
+		raw = await readFile(memoryFilePath, "utf8");
+	} catch {
+		return { path: memoryFilePath, entries: [], raw: `${MEMORY_HEADER}\n` };
+	}
 
 	try {
 		return {
@@ -248,7 +254,14 @@ async function writeMemoryStore(memoryFilePath: string, entries: MemoryEntry[]):
 }
 
 async function loadMemoryBlock(cwd: string): Promise<string> {
-	const memoryFilePath = await ensureMemoryStore(cwd);
+	const memoryFilePath = getMemoryFilePath(cwd);
+
+	try {
+		await access(memoryFilePath);
+	} catch {
+		return `${MEMORY_HEADER}\n`;
+	}
+
 	const raw = await readFile(memoryFilePath, "utf8");
 
 	try {
@@ -446,7 +459,7 @@ async function handleMemCommand(args: string, ctx: ExtensionCommandContext): Pro
 	}
 
 	if (trimmedArgs === "status") {
-		const store = await loadMemoryStore(ctx.cwd);
+		const store = await loadMemoryStore(ctx.cwd, { ensureExists: false });
 		ctx.ui.notify(buildMemoryStatusText(store.path, store.entries.length), "info");
 		return;
 	}
