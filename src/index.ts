@@ -16,7 +16,6 @@ const MEMORY_DIRECTORY_RELATIVE_PATH = ".mem";
 const MEMORY_FILE_RELATIVE_PATH = ".mem/memories.md";
 const MEMORY_GITIGNORE_RELATIVE_PATH = ".mem/.gitignore";
 const DEFAULT_MEMORY_GITIGNORE_CONTENT = "*\n";
-const MEMORY_CONTEXT_TYPE = "mem-context";
 const MEM_COMMAND_USAGE = 'Usage: /mem status | /mem show | /mem "memory text"';
 const MANUAL_MEMORY_TAGGING_SYSTEM_PROMPT = `You convert a raw user note into a single durable memory entry for pi.
 
@@ -451,7 +450,7 @@ async function showMemoriesUi(markdown: string, ctx: ExtensionCommandContext): P
 	});
 }
 
-async function handleMemCommand(args: string, ctx: ExtensionCommandContext): Promise<void> {
+async function handleMemCommand(args: string, ctx: ExtensionCommandContext, onMemoryChanged?: (cwd: string) => Promise<void>): Promise<void> {
 	const trimmedArgs = args.trim();
 	if (!trimmedArgs) {
 		ctx.ui.notify(MEM_COMMAND_USAGE, "info");
@@ -490,28 +489,26 @@ async function handleMemCommand(args: string, ctx: ExtensionCommandContext): Pro
 
 	const entryText = directEntry ?? (await classifyManualMemoryText(rawText, ctx));
 	const result = await addMemoryEntry(ctx.cwd, entryText);
+	await onMemoryChanged?.(ctx.cwd);
 	ctx.ui.notify(`Added memory ${result.number} in ${MEMORY_FILE_RELATIVE_PATH}: ${result.entry}`, "success");
 }
 
 export default function memExtension(pi: ExtensionAPI) {
-	pi.on("context", async (event, ctx) => {
-		const memoryBlock = await loadMemoryBlock(ctx.cwd);
-		const messages = event.messages.filter((message) => {
-			const candidate = message as { role?: string; customType?: string };
-			return !(candidate.role === "custom" && candidate.customType === MEMORY_CONTEXT_TYPE);
-		});
+	let cachedMemoryBlock: string | null = null;
 
+	async function refreshMemoryCache(cwd: string): Promise<string> {
+		cachedMemoryBlock = await loadMemoryBlock(cwd);
+		return cachedMemoryBlock;
+	}
+
+	pi.on("session_start", async (_event, ctx) => {
+		await refreshMemoryCache(ctx.cwd);
+	});
+
+	pi.on("before_agent_start", async (event, ctx) => {
+		const memoryBlock = cachedMemoryBlock ?? (await refreshMemoryCache(ctx.cwd));
 		return {
-			messages: [
-				{
-					role: "custom",
-					customType: MEMORY_CONTEXT_TYPE,
-					content: memoryBlock,
-					display: false,
-					timestamp: Date.now(),
-				},
-				...messages,
-			],
+			systemPrompt: event.systemPrompt + "\n\n" + memoryBlock,
 		};
 	});
 
@@ -550,6 +547,7 @@ export default function memExtension(pi: ExtensionAPI) {
 			const operation = normalizeMemToolParams(params);
 			if (operation.action === "add") {
 				const result = await addMemoryEntry(ctx.cwd, operation.entry, signal);
+				await refreshMemoryCache(ctx.cwd);
 
 				return {
 					content: [{ type: "text", text: `Added memory ${result.number} in ${MEMORY_FILE_RELATIVE_PATH}: ${result.entry}` }],
@@ -566,6 +564,7 @@ export default function memExtension(pi: ExtensionAPI) {
 
 			if (operation.action === "update") {
 				const result = await updateMemoryEntry(ctx.cwd, operation.number, operation.entry, signal);
+				await refreshMemoryCache(ctx.cwd);
 
 				return {
 					content: [
@@ -587,6 +586,7 @@ export default function memExtension(pi: ExtensionAPI) {
 			}
 
 			const result = await deleteMemoryEntry(ctx.cwd, operation.number, signal);
+			await refreshMemoryCache(ctx.cwd);
 			return {
 				content: [{ type: "text", text: `Deleted memory ${operation.number} from ${MEMORY_FILE_RELATIVE_PATH}: ${result.entry}` }],
 				details: {
@@ -614,7 +614,7 @@ export default function memExtension(pi: ExtensionAPI) {
 		},
 		handler: async (args, ctx) => {
 			try {
-				await handleMemCommand(args, ctx);
+				await handleMemCommand(args, ctx, refreshMemoryCache);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				ctx.ui.notify(`mem: ${message}`, "error");
